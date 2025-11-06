@@ -1,0 +1,10 @@
+### (M1) 测试：提交一个新 Job 到 Gateway
+
+POST http://localhost:8080/jobs
+Content-Type: application/json
+
+{
+    "jobId": "job-12345",
+    "type": "DataExtraction",
+    "payload": "https://example.com/data/source.csv"
+}
