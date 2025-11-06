@@ -1,0 +1,11 @@
+# .env 文件包含我们的机密
+.env
+
+# 忽略 IDE 和操作系统产生的文件
+.vscode/
+.idea/
+*.iml
+target/
+*.log
+.DS_Store
+node_modules/
