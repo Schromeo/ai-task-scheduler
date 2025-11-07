@@ -1,69 +1,53 @@
 # Development Log
 
-## Day 1: Nov 06, 2025 (Project Setup & M1 - Gateway)
+## Day 1-2: (M1) Project Setup & E2E Dockerized Flow
 
 ### What I Accomplished:
-* Established the complete project foundation: Git repository, Docker Compose (MySQL, Kafka), and security (`.env`, `.gitignore`).
-* Successfully structured the project as a multi-module Maven build (Parent POM + `gateway` module).
-* Implemented the `gateway` service's `POST /jobs` API endpoint using Spring Boot (`@RestController`).
-* Configured the `gateway` service to connect to Kafka (`KafkaTemplate`) and MySQL (`Spring Data JPA`).
-* **[SUCCESS]** The `POST /jobs` endpoint successfully receives requests, logs them, and publishes the payload to the `topic.jobs` Kafka topic.
-
-### Key Challenges & Solutions:
-
-**1. Challenge: The "JDK War"**
-* **Problem:** My local environment had Java 23 installed, but the project `pom.xml` requires Java 17 (LTS). This caused the VS Code Java Language Server (JDT-LS) to fail initialization.
-* **Pitfall:** I first attempted a manual download and mistakenly downloaded Java 8.
-* **Solution:**
-    1.  Installed a clean **JDK 17 (MSI)** to ensure proper system registration.
-    2.  "Hard-coded" the VS Code `settings.json` to force the language server to use the correct JDK path, bypassing the "stuck" auto-detection:
-        ```json
-        "java.jdt.ls.java.home": "C:\\Program Files\\...\\jdk-17.0.17"
-        ```
-    3.  This immediately stabilized the IDE.
-
-**2. Challenge: MySQL `Access Denied`**
-* **Problem:** The `gateway` service failed to start, throwing a `java.sql.SQLException: Access denied for user '${DB_USER}'`. The environment variables from `launch.json` were not being injected correctly during startup.
-* **Solution:**
-    1.  Refactored `application.properties` to use Spring's **default value syntax**:
-        ```properties
-        spring.datasource.username=${DB_USER:user}
-        spring.datasource.password=${DB_PASS:password}
-        ```
-    2.  This provides a fallback for local development (which fixed the issue) while still allowing environment variables to override it in production.
-
-### Key Learnings:
-* Never underestimate environment configuration. Manually verifying the Java Language Server's JDK (`java.jdt.ls.java.home`) is a critical debugging step for VS Code.
-* The `REST Client` (`.http` file) extension in VS Code is a highly efficient workflow for API testing, removing the need to leave the IDE.
-* The `${VAR:default_value}` syntax is a powerful and safe pattern for local development properties.
-
-## Day 2: Nov 06, 2025 (M1 - Worker & Milestone Complete)
-
-### What I Accomplished:
-* Created the `worker` module from scratch, adhering to the multi-module Maven structure.
-* Implemented the `JobListener` service using `@KafkaListener` to consume messages from the `topic.jobs`.
-* **[MILESTONE 1 COMPLETE]** Successfully created a full, end-to-end (E2E) message pipeline:
+* **[MILESTONE 1 COMPLETE]** Successfully built and ran the entire multi-service application (Gateway, Worker, Kafka, MySQL) using a single `docker-compose up --build` command.
+* Established a full, end-to-end (E2E) message pipeline:
     1.  `REST Client` -> `POST /jobs` (HTTP)
-    2.  `Gateway` (8080) -> `Kafka (topic.jobs)`
-    3.  `Worker` (8081) -> `✅✅✅ [Worker] Log` (Success!)
+    2.  `gateway-service` (Docker) -> `kafka` (Docker)
+    3.  `worker-service` (Docker) -> `✅✅✅ Log Output` (Success!)
+* Set up a professional multi-module Maven project (`parent`, `gateway`, `worker`).
+* Created a secure `.env` file for credentials, used by both `docker-compose.yaml` and local Spring Boot `application.properties` (using `${VAR:default_value}` syntax).
 
 ### Key Challenges & Solutions:
 
-**1. Challenge: The "Zombie" Worker Process**
-* **Problem:** The initial `worker` (without `spring-boot-starter-web`) was a "background" process. It "died" immediately after `main` finished, **but** its "zombie" process (`java.exe`) **still held onto port 8081**.
-* **Error:** `Port 8081 was already in use.`
-* **Solution:**
-    1.  Upgraded the `worker` to be a "real" web service by adding `spring-boot-starter-web` and `spring-boot-starter-actuator`. This forces it to "stay alive" (blocking the main thread) to serve health checks.
-    2.  Used `netstat -aon | findstr "8081"` (PowerShell) to find the "zombie" PID.
-    3.  Used `taskkill /PID <zombie_pid> /F` to kill the process and free the port.
+**1. Challenge: The "JDK War" (Local Debugging)**
+* **Problem:** VS Code's Java Language Server (JDT-LS) failed to initialize, showing errors on basic Java/Spring imports.
+* **Diagnosis:** The local `java -version` was `23`, but the `pom.xml` required `17`. The plugin couldn't find a valid JDK.
+* **Solution:** Installed a dedicated JDK 17 (MSI) and manually configured VS Code's `settings.json` to force the plugin to use it. This immediately stabilized the IDE.
+    ```json
+    "java.jdt.ls.java.home": "C:\\Program Files\\...\\jdk-17.0.17"
+    ```
 
-**2. Challenge: The "Silent" Worker (The Final Boss)**
-* **Problem:** The `worker` started correctly on 8081, `gateway` sent the message, but the `worker`'s `@KafkaListener` **never fired**. No `✅✅✅` logs appeared.
-* **Diagnosis (My "A-Ha!" Moment):** I realized I had created the `consumer` package (`JobListener.java`) in the **wrong directory**.
-* **Solution:** I moved the `consumer` package from `project-root/consumer` to **inside** the correct Spring Boot scan path: `worker/src/main/java/com/app/worker/consumer`.
-* **Result:** Spring Boot's "Component Scan" finally "found" the `@Service` (`JobListener`), activated the `@KafkaListener`, and the messages immediately came flooding in!
+**2. Challenge: The "Silent Worker" (Local Debugging)**
+* **Problem:** The `worker` service started but did not consume any Kafka messages.
+* **Diagnosis (Self-Resolved):** The `consumer` package (containing the `@KafkaListener`) was placed in the wrong directory (`project-root/worker` instead of `project-root/worker/src/main/java/com/app/worker/`).
+* **Solution:** Moved the `consumer` package to the correct location. Spring Boot's Component Scan was then able to find and register the listener.
+
+**3. Challenge: The "Zombie" Worker (Local Debugging)**
+* **Problem:** The `worker` service would start and then immediately exit, returning to the command prompt.
+* **Diagnosis:** A Spring Boot application with *only* background tasks (like `@KafkaListener`) and no "foreground" task (like `starter-web`) will exit when the `main` method finishes.
+* **Solution:** Added `spring-boot-starter-web` and `spring-boot-starter-actuator` to the `worker`'s `pom.xml` and set `server.port=8081` to prevent conflicts. This keeps the process alive and makes it health-checkable (a production best practice).
+
+**4. Challenge: Docker Build Fail 1 (`mvnw: not found`)**
+* **Problem:** `docker-compose up --build` failed with `/bin/sh: 1: ./mvnw: not found`.
+* **Diagnosis:** The `Dockerfile` was trying to execute `./mvnw`, but this file only existed locally; it had not been `COPY`'d into the Docker build context.
+* **Solution:** Added `COPY .mvn/ ./.mvn` and `COPY mvnw .` to both `gateway/Dockerfile` and `worker/Dockerfile` **before** the `RUN ./mvnw...` command.
+
+**5. Challenge: Docker Build Fail 2 (`Child module... not found`)**
+* **Problem:** The `gateway` build failed because Maven couldn't find the `worker` module (and vice-versa).
+* **Diagnosis:** A multi-module Maven build needs *all* `pom.xml` files to understand the project structure, even when building only one module.
+* **Solution:** Added `COPY gateway/pom.xml ./gateway/` AND `COPY worker/pom.xml ./worker/` to **both** Dockerfiles.
+
+**6. Challenge: Docker Build Fail 3 (`no main manifest attribute`)**
+* **Problem:** The `.jar` files were built but were not "executable" (`java -jar app.jar` failed).
+* **Diagnosis:** The child modules (`gateway`, `worker`) did not inherit the `spring-boot-maven-plugin` configuration from the parent POM.
+* **Solution:** Added a `<build><pluginManagement>...</pluginManagement>` section to the **parent `pom.xml`** to explicitly define the `spring-boot-maven-plugin` version and `repackage` goal for all child modules.
 
 ### Key Learnings:
-* **"Port in use"** is often caused by "zombie" processes from previous failed runs. `netstat` + `taskkill` is the essential fix.
-* A "background-only" Spring Boot app (like a Kafka listener) **must** also be a "web" app (`starter-web`) to prevent the main thread from exiting prematurely.
-* Spring Boot's **Component Scan** is "silent but deadly". If you put a file in the wrong package (outside the `main` application's sub-packages), it **will not** be "seen", and it **will not** error—it will just "do nothing".
+* A "one-click-start" with `docker-compose` is the goal.
+* Multi-module Docker builds require careful handling of the build context (copying all POMs, but only the `src` of the target module).
+* Parent POMs are critical for managing not just `dependencies` but also `plugins`.
+* Spring Boot's Component Scan (`@ComponentScan`) is limited to the main class's package and its sub-packages.

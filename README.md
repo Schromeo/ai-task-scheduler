@@ -1,18 +1,19 @@
 # 🤖 AI-Enhanced Distributed Task Scheduler
 
-This is a personal, hands-on project to build an industry-grade, distributed task scheduling platform from scratch. The primary goal is to master and demonstrate advanced backend architecture concepts.
+This is a personal, hands-on project to build an industry-grade, distributed task scheduling platform from scratch. The primary goal is to master and demonstrate advanced backend architecture concepts, including microservices, message queues, and database integration.
 
 ## 📍 Tech Stack
 
 * **Backend:** Spring Boot, Java 17, Maven
 * **Message Broker:** Apache Kafka
 * **Database:** MySQL 8.0
-* **Environment:** Docker Compose
+* **Containerization:** Docker & Docker Compose
 * **AI Module:** (Upcoming) Python FastAPI
 
 ## 🚀 Milestones
 
-* **[✅ COMPLETED] M1: E2E Message Flow:**
+* **[✅ COMPLETED] M1: E2E Message Flow (Dockerized)**
+    * All services (MySQL, Kafka, Gateway, Worker) run via a single `docker-compose up` command.
     * `Gateway` service accepts `POST /jobs` requests.
     * `Gateway` publishes job message to a Kafka topic.
     * `Worker` service consumes the message from the topic and logs it.
@@ -26,7 +27,9 @@ This is a personal, hands-on project to build an industry-grade, distributed tas
 * **[◻️ PENDING] M3: AI & Monitoring**
 * **[◻️ PENDING] M4: Deployment**
 
-## How to Run (M1)
+## How to Run (M1 - E2E Dockerized)
+
+This project is fully containerized. You only need **Docker Desktop** installed and running.
 
 1.  **Clone the Repository**
     ```bash
@@ -36,33 +39,22 @@ This is a personal, hands-on project to build an industry-grade, distributed tas
 
 2.  **Create Environment File**
     * Copy the template: `cp .env.example .env` (or manually copy).
-    * Fill in the `MYSQL_USER` and `MYSQL_PASSWORD` values in `.env`.
+    * Fill in your desired `MYSQL_USER` and `MYSQL_PASSWORD` in the `.env` file.
 
-3.  **Start Infrastructure**
-    * Ensure your Docker Desktop is running.
-    * ```bash
-        docker-compose up -d
-        ```
-    * This will launch MySQL, Kafka, and Zookeeper.
+3.  **Run the "One-Click Start"**
+    * This command will build the `gateway` and `worker` images, then start all 5 containers.
+    * (This may take a few minutes on the first run as it downloads dependencies).
+    ```bash
+    docker-compose up --build
+    ```
 
-4.  **Run the Services** (in two separate terminals)
-
-    * **Terminal 1: Start the Gateway**
-        ```bash
-        # From the project root directory
-        ./mvnw -f gateway/pom.xml spring-boot:run
-        ```
-        *(Wait for `...Started GatewayApplication...` on port 8080)*
-
-    * **Terminal 2: Start the Worker**
-        ```bash
-        # From the project root directory
-        ./mvnw -f worker/pom.xml spring-boot:run
-        ```
-        *(Wait for `...Started WorkerApplication...` on port 8081)*
-
-5.  **Test the API!**
-    * Open the `tests/M1-test-gateway.http` file in VS Code (with the REST Client extension).
+4.  **Test the API**
+    * Wait for the logs to show that both `gateway-service` and `worker-service` have `Started ...Application...`
+    * Open the `tests/M1-test-gateway.http` file in VS Code (requires the "REST Client" extension).
     * Click the **"Send Request"** link above the `POST` line.
-    * You will see a `200 OK` response in the right-hand panel.
-    * Check your **Worker terminal** (Terminal 2) — you will see the `✅✅✅ [Worker] "球"接到了!...` log output!
+
+5.  **Observe the Result**
+    * You will see an `HTTP/1.1 200 OK` response on the right.
+    * Check your `docker-compose` log terminal. You will see two things happen:
+        1.  `gateway-service | 🎉 [Gateway] 收到了一个新 Job 请求...`
+        2.  `worker-service  | ✅✅✅ [Worker] “球”接到了！Job 内容是...`
