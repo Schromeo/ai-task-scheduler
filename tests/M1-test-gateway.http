@@ -4,7 +4,7 @@ POST http://localhost:8080/jobs
 Content-Type: application/json
 
 {
-    "jobId": "job-12345",
+    "jobId": "job-test-new-001",
     "type": "DataExtraction",
     "payload": "https://example.com/data/source.csv"
 }
