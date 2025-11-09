@@ -13,6 +13,7 @@
     <modules>
         <module>gateway</module>
         <module>worker</module>
+        <module>common</module>
     </modules>
 
     <properties>

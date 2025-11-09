@@ -7,26 +7,21 @@ WORKDIR /app
 # 复制父 POM
 COPY pom.xml .
 
-# --- 【修复】 复制 Maven Wrapper ---
+# 复制 Maven Wrapper
 COPY .mvn/ ./.mvn
 COPY mvnw .
-# ---------------------------------
 
-# 复制所有模块的 POMs
+# --- 【M2 修复！】 复制““所有””模块的 POMs ---
 COPY gateway/pom.xml ./gateway/
 COPY worker/pom.xml ./worker/
+COPY common/pom.xml ./common/  
 
-# 复制源代码 (只复制 worker 的)
+# --- 【M2 修复！】 复制““所有””模块的源代码 ---
+# 我们需要 worker 和 common 的代码
+# (虽然 worker 暂未依赖 common，但很快就会了)
 COPY worker/src ./worker/src
-
-# 运行 Maven 依赖下载
-RUN ./mvnw dependency:go-offline -pl worker -am
-
-# 复制源代码 (现在再复制)
-# (上面已经复制过了，但为了保险再加一次)
-COPY worker/src ./worker/src
-
-# 运行 Maven 打包命令
+COPY common/src ./common/src   
+# 运行 Maven 打包命令 (只打包 worker)
 RUN ./mvnw clean package -pl worker -am -DskipTests
 
 # --------------------

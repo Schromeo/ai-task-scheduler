@@ -1,51 +1,48 @@
-// 告诉 Java，这个文件属于哪个“包”
 package com.app.gateway.api;
 
-// --- 导入 Spring Boot 需要的“工具” ---
+import com.app.common.model.Job; // 导入我们的实体
+import com.app.common.model.JobStatus;
+import com.app.gateway.api.dto.JobSubmitRequest; // 导入我们刚创建的 DTO
+import com.app.gateway.repository.JobRepository; // 导入我们刚创建的 Repository
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// @RestController 告诉 Spring：“这是一个 API 控制器，请把它交给我管理！”
 @RestController
-// @RequestMapping("/jobs") 告诉 Spring：“这个类里所有的 API，都在 /jobs 路径下”
 @RequestMapping("/jobs")
 public class JobsController {
 
-    // (这是““魔法””的开始：依赖注入)
-    // 我们告诉 Spring：“请把‘Kafka 发送器’ (KafkaTemplate) 给我，我要用！”
+    // ““旧的”” KafkaTemplate 已经删掉了
+    // 换成““新””的 JobRepository！
     @Autowired
-    private KafkaTemplate<String, String> kafkaTemplate;
-
-    // 这是我们 M1 的核心 Topic (主题)
-    private static final String JOB_TOPIC = "topic.jobs";
+    private JobRepository jobRepository;
 
     /**
-     * M1 的核心 API：提交一个新任务
-     * * @PostMapping 告诉 Spring：“当有人用 POST 方法访问 /jobs 时，请调用这个函数！”
+     * M2 版本的 API：提交一个新任务并存入数据库
      */
     @PostMapping
-    public ResponseEntity<String> submitJob(@RequestBody String jobPayload) {
+    public ResponseEntity<Job> submitJob(@RequestBody JobSubmitRequest request) {
         
-        // 1. (调试) 先在控制台打印一下，我们收到了什么
-        System.out.println("🎉 [Gateway] 收到了一个新 Job 请求: " + jobPayload);
+        System.out.println("🎉 [Gateway] M2: 收到新 Job 请求: " + request.getPayload());
 
-        // 2. (核心) 把这个消息“发送”到 Kafka 的 topic.jobs 主题
-        //    (我们 M1 先简单点，直接把收到的“字符串”发出去)
+        // 1. 把 DTO 转换成 数据库实体(Entity)
+        Job newJob = new Job(request.getType(), request.getPayload());
+        newJob.setStatus(JobStatus.PENDING); // 明确设置状态为“待处理”
+
+        // 2. (核心) 保存到 MySQL 数据库！
         try {
-            kafkaTemplate.send(JOB_TOPIC, jobPayload);
-        } catch (Exception e) {
-            // 如果 Kafka 挂了 (比如 Docker 没开)，打印错误
-            System.err.println("🚨 [Gateway] 发送 Kafka 失败: " + e.getMessage());
-            // 告诉“顾客”(客户端)，服务器内部出错了
-            return ResponseEntity.internalServerError().body("发送 Kafka 失败: " + e.getMessage());
-        }
+            Job savedJob = jobRepository.save(newJob);
 
-        // 3. 告诉“顾客”(客户端)：“点餐成功！这是你的回执”
-        return ResponseEntity.ok("Job 已收到并发送到 Kafka: " + jobPayload);
+            // 3. 把““保存成功””并带有““新ID””的 Job 对象返回给前端
+            return ResponseEntity.ok(savedJob);
+
+        } catch (Exception e) {
+            System.err.println("🚨 [Gateway] M2: 数据库保存失败: " + e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }
