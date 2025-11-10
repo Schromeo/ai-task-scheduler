@@ -1,7 +1,6 @@
-version: '3.8'
+version: '3.8' # 这个 version 字段虽然“过时”了，但留着也无害
 
 services:
-  # 1. Zookeeper (Kafka 依赖)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.3.0
     container_name: zookeeper
@@ -11,75 +10,85 @@ services:
     ports:
       - "2181:2181"
 
-  # 2. Kafka (消息队列)
   kafka:
     image: confluentinc/cp-kafka:7.3.0
     container_name: kafka
     depends_on:
-      - zookeeper
+      zookeeper: # 确保 zookeeper 先启动
+        condition: service_started
     ports:
       - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      # 这里的 "kafka:29092" 是容器“内部”互相通信的地址
+      # 修复了昨天的拼写错误
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
-      # 改成这样:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_NUM_PARTITIONS: 3 # 稍微多点分区
+      KAFKA_NUM_PARTITIONS: 3
 
-  # 3. MySQL (数据库)
   mysql:
     image: mysql:8.0
     container_name: mysql
     ports:
       - "3306:3306"
     environment:
-      # 这些变量从我们根目录的 .env 文件读取！
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql-data:/var/lib/mysql
+    # ⬇️⬇️⬇️ 【““关键””新增】 ⬇️⬇️⬇️
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # ⬆️⬆️⬆️ 【““关键””新增】 ⬆️⬆️⬆️
 
-  # 4. 【新】Gateway 服务
   gateway:
     build:
-      context: .  # 使用当前目录作为构建上下文
-      dockerfile: gateway/Dockerfile # 告诉它去哪儿找 Dockerfile
+      context: .
+      dockerfile: gateway/Dockerfile
     container_name: gateway-service
     depends_on:
-      - kafka       # 确保 Kafka 启动了, 它才启动
-      - mysql       # 确保 MySQL 启动了, 它才启动
+      kafka:
+        condition: service_started
+      # ⬇️⬇️⬇️ 【““关键””修改】 ⬇️⬇️⬇️
+      mysql:
+        condition: service_healthy # ““不只要启动(started)，更要健康(healthy)！””
+      # ⬆️⬆️⬆️ 【““关键””修改】 ⬆️⬆️⬆️
     ports:
-      - "8080:8080" # 把本机的 8080 端口 映射到 容器的 8080 端口
+      - "8080:8080"
     environment:
-      # 覆盖 application.properties 里的值，使用“容器网络”
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092" # 在 Docker 网络里, Kafka 的地址是 "kafka:29092"
-      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}" # DB 的地址是 "mysql:3306"
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER} # 从 .env 文件读取
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD} # 从 .env 文件读取
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_JPA_SHOW_SQL: "true"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}"
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      # (其他的 JPA 和 Topic 配置我们已经写在 properties 里了)
 
-  # 5. 【新】Worker 服务
   worker:
     build:
       context: .
-      dockerfile: worker/Dockerfile # 告诉它去哪儿找 worker 的 Dockerfile
+      dockerfile: worker/Dockerfile
     container_name: worker-service
     depends_on:
-      - kafka       # 确保 Kafka 启动了, 它才启动
+      kafka:
+        condition: service_started
+      # ⬇️⬇️⬇️ 【““关键””修改】 ⬇️⬇️⬇️
+      mysql:
+        condition: service_healthy # ““同样，等 MySQL 准备好！””
+      # ⬆️⬆️⬆️ 【““关键””修改】 ⬆️⬆️⬆️
     ports:
-      - "8081:8081" # 映射 8081 端口
+      - "8081:8081"
     environment:
-      # 覆盖 application.properties 里的值
       SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
-      SPRING_KAFKA_CONSUMER_GROUP_ID: "scheduler-cg"
-      SPRING_KAFKA_CONSUMER_AUTO_OFFSET_RESET: "earliest"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}"
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
 
 volumes:
   mysql-data:
