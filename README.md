@@ -1,33 +1,33 @@
 # 🤖 AI-Enhanced Distributed Task Scheduler
 
-A hands-on project to build an industry-grade, distributed task scheduling platform from scratch, demonstrating advanced backend architecture concepts.
+A personal project to build an industry-grade, distributed task scheduling platform from scratch. This project demonstrates core concepts in distributed systems, including microservices, message queues, database persistence, and fault tolerance.
 
 ## 📍 Tech Stack
 
-* **Backend:** Spring Boot, Java 17, Maven (Multi-Module)
+* **Backend:** Spring Boot (Java 17), Maven
 * **Database:** MySQL 8.0
-* **Message Broker:** Apache Kafka (Used in M1, replaced by DB in M2)
+* **Message Broker:** Apache Kafka
 * **Containerization:** Docker & Docker Compose
 * **AI Module:** (Upcoming) Python FastAPI
 
 ## 🚀 Milestones
 
-* **[✅ COMPLETED] M1: E2E Message Flow (Local)**
+* **[✅ COMPLETED] M1: E2E Message Flow (Kafka)**
     * `Gateway` service accepts `POST /jobs` requests.
     * `Gateway` publishes job message to a Kafka topic.
-    * `Worker` service consumes the message and logs it.
+    * `Worker` service consumes the message from the topic and logs it.
 
-* **[✅ COMPLETED] M2: Database Persistence & Dockerization**
-    * Refactored `Gateway` to save jobs to MySQL (Status: `PENDING`).
-    * Created `common` module for shared entities (`Job.java`).
-    * Refactored `Worker` to poll the database for `PENDING` jobs using `@Scheduled`.
-    * `Worker` updates job status to `RUNNING` and then `COMPLETED`.
-    * **Result:** Achieved a "One-Click-Start" environment using `docker-compose up --build` for all services.
+* **[✅ COMPLETED] M2: Database Persistence & Robustness**
+    * Created `common` module for shared entities (`Job.java`, `JobStatus.java`).
+    * Refactored `Gateway`: No longer uses Kafka. Instead, it saves new jobs to MySQL with a `PENDING` status.
+    * Refactored `Worker`: No longer listens to Kafka. It now polls the database using `@Scheduled`.
+    * **Robustness:** Implemented a "lease" mechanism (`leaseExpiresAt` timestamp) to handle worker failures. The `worker` now polls for both `PENDING` jobs and "stuck" `RUNNING` jobs whose lease has expired, ensuring at-least-once processing.
 
-* **[◻️ PENDING] M2.5: Robustness**
-    * Implement idempotency in the worker.
-    * Add retry logic and a Dead-Letter Queue (DLQ) mechanism.
-    * Handle "stuck" jobs (worker crash detection).
+* **[✅ COMPLETED] M2.5: "One-Click Start" (Docker)**
+    * Containerized both `gateway` and `worker` services using multi-stage `Dockerfile`s.
+    * Configured `docker-compose.yaml` to manage the full stack (MySQL, Kafka, Zookeeper, Gateway, Worker).
+    * Solved container networking (e.g., `mysql` instead of `localhost`).
+    * Solved service start-up "race conditions" using Docker `healthcheck` and `depends_on: service_healthy`.
 
 * **[◻️ PENDING] M3: AI & Monitoring**
 
@@ -46,7 +46,7 @@ This project is fully containerized. You only need **Docker Desktop** installed 
     * Fill in your desired `MYSQL_USER` and `MYSQL_PASSWORD` in the `.env` file.
 
 3.  **Run the "One-Click Start"**
-    * This command will build the `gateway` and `worker` images, then start all 5 containers (zookeeper, kafka, mysql, gateway, worker).
+    * This command will build the `gateway` and `worker` images, then start all 5 containers.
     * (This may take several minutes on the first run).
     ```bash
     docker-compose up --build
@@ -58,9 +58,5 @@ This project is fully containerized. You only need **Docker Desktop** installed 
     * Click the **"Send Request"** link above the `POST` line.
 
 5.  **Observe the Result in Docker Logs:**
-    1.  `gateway-service | 🎉 [Gateway] M2: 收到新 Job 请求...`
-    2.  `gateway-service | Hibernate: insert into jobs ...`
-    3.  *(Wait ~5 seconds for the next poll)*
-    4.  `worker-service  | Hibernate: SELECT * FROM jobs WHERE status = 'PENDING'...`
-    5.  `worker-service  | 🔥🔥🔥 [Worker] M2: “开始处理” Job ID: 1`
-    6.  `worker-service  | ✅✅✅ [Worker] M2: “完成” Job ID: 1`
+    * The `gateway-service` log will show `🎉 [Gateway] M2: 收到新 Job 请求...` and an `Hibernate: insert into jobs ...` SQL statement.
+    * Within 5 seconds, the `worker-service` log will show `🔥🔥🔥 [Worker] M2.5: “开始处理” Job ID: ...` and then `✅✅✅ [Worker] M2.5: “完成” Job ID: ...`.

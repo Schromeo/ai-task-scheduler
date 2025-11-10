@@ -1,6 +1,6 @@
 package com.app.common.model;
 
-import jakarta.persistence.Entity; // 导入 JPA 的 @Entity
+import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
@@ -8,8 +8,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
-import java.time.Instant;
 import jakarta.persistence.Column;
+import java.time.Instant;
 
 /**
  * 任务实体类 (对应数据库中的 "jobs" 表)
@@ -22,38 +22,37 @@ public class Job {
     @GeneratedValue(strategy = GenerationType.IDENTITY) // 告诉 MySQL 自动生成 ID (自增)
     private Long id;
 
-    // 任务类型, e.g., "DataExtraction", "EmailReport"
-    @Column(nullable = false) // 标记为“不能为空”
+    @Column(nullable = false) 
     private String type;
 
-    // 任务状态 (使用我们刚创建的枚举)
     @Enumerated(EnumType.STRING) // 告诉 JPA 把枚举存成字符串 (e.g., "PENDING")
     @Column(nullable = false)
     private JobStatus status;
 
-    // 任务的“载荷”，比如 JSON 字符串。
-    // @Lob 告诉 JPA 这是一个“大对象”(Large Object)，
-    // 在 MySQL 里会对应 LONGTEXT 类型，可以存很多内容。
     @Lob
     @Column(nullable = false)
     private String payload;
 
-    // 优先级 (数字越小，优先级越高)
     private int priority;
 
-    // 最大重试次数
     private int maxAttempts = 3; // 默认给 3 次
 
-    // 当前已尝试次数
     private int currentAttempt = 0;
 
-    // 任务创建时间 (我们会在创建时自动设置)
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
-    // 任务最后更新时间
     @Column(nullable = false)
     private Instant updatedAt;
+
+    // ⬇️⬇️ 【M2.5 新增字段】 ⬇️⬇️
+    // 租约到期时间。
+    // 当 worker 拿起任务时，会把这个时间设为 "now + 5 minutes"
+    // 如果 worker 崩溃，这个时间戳会过期
+    @Column(nullable = true) // PENDING 状态时可以为 null
+    private Instant leaseExpiresAt;
+    // ⬆️⬆️ 【M2.5 新增字段】 ⬆️⬆️
+
 
     // (JPA 需要一个无参构造函数)
     public Job() {
@@ -61,6 +60,7 @@ public class Job {
         this.updatedAt = Instant.now();
         this.status = JobStatus.PENDING; // 默认状态
         this.priority = 10; // 默认优先级
+        this.leaseExpiresAt = null; // ⬅️ 【M2.5 新增】
     }
 
     // 我们可以创建一个方便的构造函数
@@ -71,7 +71,6 @@ public class Job {
     }
 
     // --- 下面是标准的 Getter 和 Setter ---
-    // (在 Java 中，这些是必须的，JPA 和其他框架会用到它们)
 
     public Long getId() {
         return id;
@@ -145,6 +144,16 @@ public class Job {
         this.updatedAt = updatedAt;
     }
 
+    // ⬇️⬇️ 【M2.5 新增 Get/Set】 ⬇️⬇️
+    public Instant getLeaseExpiresAt() {
+        return leaseExpiresAt;
+    }
+
+    public void setLeaseExpiresAt(Instant leaseExpiresAt) {
+        this.leaseExpiresAt = leaseExpiresAt;
+    }
+    // ⬆️⬆️ 【M2.5 新增 Get/Set】 ⬆️⬆️
+    
     // (可选) 增加一个在更新时自动修改时间的注解
     @jakarta.persistence.PreUpdate
     protected void onUpdate() {
